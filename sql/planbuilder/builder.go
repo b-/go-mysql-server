@@ -115,13 +115,6 @@ func New(ctx *sql.Context, cat sql.Catalog, p sql.Parser) *Builder {
 	}
 }
 
-func (b *Builder) Initialize(ctx *sql.Context, cat sql.Catalog, opts ast.ParserOptions) {
-	b.ctx = ctx
-	b.cat = cat
-	b.f.ctx = ctx
-	b.parserOpts = opts
-}
-
 func (b *Builder) SetDebug(val bool) {
 	b.f.debug = val
 }
@@ -188,6 +181,10 @@ func (b *Builder) handleErr(err error) {
 }
 
 func (b *Builder) build(inScope *scope, stmt ast.Statement, query string) (outScope *scope) {
+	return b.buildSubquery(inScope, stmt, query, query)
+}
+
+func (b *Builder) buildSubquery(inScope *scope, stmt ast.Statement, subQuery string, fullQuery string) (outScope *scope) {
 	if inScope == nil {
 		inScope = b.newScope()
 	}
@@ -201,21 +198,15 @@ func (b *Builder) build(inScope *scope, stmt ast.Statement, query string) (outSc
 		}
 		return outScope
 	case *ast.Analyze:
-		return b.buildAnalyze(inScope, n, query)
+		return b.buildAnalyze(inScope, n, subQuery)
 	case *ast.CreateSpatialRefSys:
 		return b.buildCreateSpatialRefSys(inScope, n)
 	case *ast.Show:
-		// When a query is empty it means it comes from a subquery, as we don't
-		// have the query itself in a subquery. Hence, a SHOW could not be
-		// parsed.
-		if query == "" {
-			b.handleErr(sql.ErrUnsupportedFeature.New("SHOW in subquery"))
-		}
 		return b.buildShow(inScope, n)
 	case *ast.DDL:
-		return b.buildDDL(inScope, query, n)
+		return b.buildDDL(inScope, subQuery, fullQuery, n)
 	case *ast.AlterTable:
-		return b.buildAlterTable(inScope, query, n)
+		return b.buildAlterTable(inScope, subQuery, n)
 	case *ast.DBDDL:
 		return b.buildDBDDL(inScope, n)
 	case *ast.Explain:
@@ -293,15 +284,15 @@ func (b *Builder) build(inScope *scope, stmt ast.Statement, query string) (outSc
 		}
 		outScope.node = resetRep
 	case *ast.BeginEndBlock:
-		return b.buildBeginEndBlock(inScope, n)
+		return b.buildBeginEndBlock(inScope, n, fullQuery)
 	case *ast.IfStatement:
-		return b.buildIfBlock(inScope, n)
+		return b.buildIfBlock(inScope, n, fullQuery)
 	case *ast.CaseStatement:
-		return b.buildCaseStatement(inScope, n)
+		return b.buildCaseStatement(inScope, n, fullQuery)
 	case *ast.Call:
 		return b.buildCall(inScope, n)
 	case *ast.Declare:
-		return b.buildDeclare(inScope, n, query)
+		return b.buildDeclare(inScope, n, subQuery)
 	case *ast.FetchCursor:
 		return b.buildFetchCursor(inScope, n)
 	case *ast.OpenCursor:
@@ -309,11 +300,11 @@ func (b *Builder) build(inScope *scope, stmt ast.Statement, query string) (outSc
 	case *ast.CloseCursor:
 		return b.buildCloseCursor(inScope, n)
 	case *ast.Loop:
-		return b.buildLoop(inScope, n)
+		return b.buildLoop(inScope, n, fullQuery)
 	case *ast.Repeat:
-		return b.buildRepeat(inScope, n)
+		return b.buildRepeat(inScope, n, fullQuery)
 	case *ast.While:
-		return b.buildWhile(inScope, n)
+		return b.buildWhile(inScope, n, fullQuery)
 	case *ast.Leave:
 		return b.buildLeave(inScope, n)
 	case *ast.Iterate:
@@ -368,8 +359,7 @@ func (b *Builder) build(inScope *scope, stmt ast.Statement, query string) (outSc
 	return
 }
 
-// buildVirtualTableScan returns a ProjectNode for a table that has virtual columns, projecting the values of any
-// generated columns
+// buildVirtualTableScan returns a VirtualColumnTable for a table with virtual columns.
 func (b *Builder) buildVirtualTableScan(db string, tab sql.Table) *plan.VirtualColumnTable {
 	tableScope := b.newScope()
 	schema := tab.Schema()

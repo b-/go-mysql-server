@@ -17,6 +17,11 @@ func getBatchesForNode(n sql.Node, orig []*Batch) ([]*Batch, bool) {
 		if n.LiteralValueSource {
 			return []*Batch{
 				{
+					Desc:       "alwaysBeforeDefault",
+					Iterations: 1,
+					Rules:      AlwaysBeforeDefault,
+				},
+				{
 					Desc:       "simpleInsert",
 					Iterations: 1,
 					Rules: []Rule{
@@ -45,7 +50,102 @@ func getBatchesForNode(n sql.Node, orig []*Batch) ([]*Batch, bool) {
 				},
 			}, true
 		}
+	case *plan.Update:
+		if n.HasSingleRel && !n.IsJoin {
+			return []*Batch{
+				{
+					Desc:       "alwaysBeforeDefault",
+					Iterations: 1,
+					Rules:      AlwaysBeforeDefault,
+				},
+				{
+					Desc:       "simpleUpdate",
+					Iterations: 1,
+					Rules: []Rule{
+						{
+							Id:    validateReadOnlyDatabaseId,
+							Apply: validateReadOnlyDatabase,
+						},
+						{
+							Id:    validateReadOnlyTransactionId,
+							Apply: validateReadOnlyTransaction,
+						},
+						{
+							Id:    applyFKsId,
+							Apply: applyForeignKeys,
+						},
+						{
+							Id:    validatePrivilegesId,
+							Apply: validatePrivileges,
+						},
+						{
+							Id:    optimizeJoinsId,
+							Apply: optimizeJoins,
+						},
+						{
+							Id:    applyHashInId,
+							Apply: applyHashIn,
+						},
+					},
+				},
+				{
+					Desc:       "onceAfterAll",
+					Iterations: 1,
+					Rules:      OnceAfterAll,
+				},
+			}, true
+		}
+	case *plan.DeleteFrom:
+		if !n.HasExplicitTargets() && n.RefsSingleRel {
+			return []*Batch{
+				{
+					Desc:       "alwaysBeforeDefault",
+					Iterations: 1,
+					Rules:      AlwaysBeforeDefault,
+				},
+				{
+					Desc:       "simpleDelete",
+					Iterations: 1,
+					Rules: []Rule{
+						{
+							Id:    validateReadOnlyDatabaseId,
+							Apply: validateReadOnlyDatabase,
+						},
+						{
+							Id:    validateReadOnlyTransactionId,
+							Apply: validateReadOnlyTransaction,
+						},
+						{
+							Id:    processTruncateId,
+							Apply: processTruncate,
+						},
+						{
+							Id:    applyFKsId,
+							Apply: applyForeignKeys,
+						},
+						{
+							Id:    validatePrivilegesId,
+							Apply: validatePrivileges,
+						},
+						{
+							Id:    optimizeJoinsId,
+							Apply: optimizeJoins,
+						},
+						{
+							Id:    applyHashInId,
+							Apply: applyHashIn,
+						},
+					},
+				},
+				{
+					Desc:       "onceAfterAll",
+					Iterations: 1,
+					Rules:      OnceAfterAll,
+				},
+			}, true
+		}
 	default:
 	}
+
 	return nil, false
 }

@@ -53,9 +53,6 @@ func (c *Catalog) DropDbStats(ctx *sql.Context, db string, flush bool) error {
 }
 
 var _ sql.Catalog = (*Catalog)(nil)
-var _ sql.FunctionProvider = (*Catalog)(nil)
-var _ sql.TableFunctionProvider = (*Catalog)(nil)
-var _ sql.ExternalStoredProcedureProvider = (*Catalog)(nil)
 var _ binlogreplication.BinlogReplicaCatalog = (*Catalog)(nil)
 var _ binlogreplication.BinlogPrimaryCatalog = (*Catalog)(nil)
 
@@ -75,11 +72,6 @@ func NewCatalog(provider sql.DatabaseProvider) *Catalog {
 		StatsProvider:    memory.NewStatsProv(),
 		locks:            make(sessionLocks),
 	}
-}
-
-// TODO: kill this
-func NewDatabaseProvider(dbs ...sql.Database) sql.DatabaseProvider {
-	return sql.NewDatabaseProvider(dbs...)
 }
 
 func (c *Catalog) HasBinlogReplicaController() bool {
